@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Search-Performance Opportunity Scoring | FlyRank Capstone</title>
+<style>
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.7;
+        max-width: 950px;
+        margin: 0 auto;
+        padding: 40px 24px;
+        color: #222;
+        background: #fafafa;
+    }
+    header {
+        padding: 45px 0 30px;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 35px;
+    }
+    h1 {
+        font-size: 42px;
+        line-height: 1.15;
+        margin-bottom: 15px;
+    }
+    h2 {
+        margin-top: 45px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #ddd;
+    }
+    h3 {
+        margin-top: 28px;
+    }
+    .subtitle {
+        font-size: 19px;
+        color: #666;
+    }
+    .meta {
+        color: #666;
+        margin-top: 20px;
+    }
+    .card {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 22px;
+        margin: 20px 0;
+    }
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin: 25px 0;
+    }
+    .metric {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+    }
+    .metric strong {
+        display: block;
+        font-size: 28px;
+        margin-bottom: 5px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        background: white;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+    }
+    th {
+        background: #f1f1f1;
+    }
+    code {
+        background: #eee;
+        padding: 2px 5px;
+        border-radius: 4px;
+    }
+    .note {
+        background: #f1f1f1;
+        border-left: 4px solid #555;
+        padding: 15px 18px;
+        margin: 20px 0;
+    }
+    img {
+        max-width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin: 15px 0;
+    }
+    footer {
+        margin-top: 60px;
+        padding-top: 25px;
+        border-top: 1px solid #ddd;
+        color: #666;
+    }
+    @media (max-width: 700px) {
+        .metric-grid {
+            grid-template-columns: 1fr;
+        }
+        h1 {
+            font-size: 32px;
+        }
+    }
+</style>
+</head>
+<body>
+<header>
+<h1>
+Search-Performance Opportunity Scoring for Content Review
+</h1>
+<p class="subtitle">
+A repeatable decision-support framework using the FlyRank ML Internship search warehouse
+</p>
+<p class="meta">
+FlyRank ML Internship Capstone · March 2026 Data Release
+</p>
+</header>
+<section>
+<h2>Abstract</h2>
+<p>
+This study asks whether search-performance signals can be combined into a repeatable scoring system that helps prioritize content pages for review. Using the March 2026 FlyRank ML Internship search warehouse, the analysis uses Google Search Console-derived impressions, clicks, average position, click-through rate, and an observed decline label. A transparent logistic regression model is evaluated against a majority-class baseline using the same stratified test split, while a separate weighted opportunity score converts observable signals into a ranked content-review queue. The classification model achieves the same accuracy as the majority baseline in this validation setup, indicating that the simple model does not provide measurable accuracy improvement over the baseline. The resulting opportunity score is therefore framed as a directional decision-support and prioritization mechanism rather than a guaranteed predictor of traffic growth or a causal explanation of search-engine behavior.
+</p>
+</section>
+<section>
+<h2>1. Introduction / Problem Statement</h2>
+<p>
+Content teams may have many pages that could potentially be improved, but limited time to investigate every page. The practical decision supported by this analysis is therefore:
+</p>
+<div class="card">
+<strong>
+Which content pages should a content team investigate first for potential improvement, rewriting, or monitoring?
+</strong>
+</div>
+<p>
+The capstone focuses on the <strong>Refresh / Content Opportunity Scoring</strong> lane. Rather than attempting to explain Google's ranking system, the analysis identifies observed search-performance patterns and converts them into a repeatable review-prioritization framework.
+</p>
+<p>
+The output is intended to help organize editorial investigation. A high opportunity score indicates that a page has a combination of observable signals that make it worthy of review; it does not guarantee that changing the page will improve traffic or rankings.
+</p>
+</section>
+<section>
+<h2>2. Data</h2>
+<p>
+The analysis uses the <strong>March 2026 release</strong> of the FlyRank ML Internship search warehouse, specifically the <code>fact_content_daily_performance</code> data.
+</p>
+<p>
+The warehouse was queried using DuckDB with secure Hugging Face authentication. The analysis filters to records where <code>gsc_data_available = TRUE</code>, ensuring that the analyzed records have usable Google Search Console performance signals.
+</p>
+<div class="metric-grid">
+<div class="metric">
+<strong>9.84M</strong>
+Total March warehouse rows
+</div>
+<div class="metric">
+<strong>3.61M</strong>
+Rows with usable GSC data
+</div>
+<div class="metric">
+<strong>March 2026</strong>
+Analysis window
+</div>
+</div>
+<h3>Fields Used</h3>
+<ul>
+<li>GSC impressions</li>
+<li>GSC clicks</li>
+<li>GSC average position</li>
+<li>Calculated click-through rate (CTR)</li>
+<li>Previously defined binary <code>decline_label</code></li>
+</ul>
+<h3>Public-Safe Data Handling</h3>
+<p>
+The public research paper does not expose client names, domains, private search queries, credentials, or raw warehouse exports. The analysis is presented using aggregate methodology and safe performance signals.
+</p>
+</section>
+<section>
+<h2>3. Methodology</h2>
+<h3>Features</h3>
+<p>
+Four input features are used:
+</p>
+<table>
+<tr>
+<th>Feature</th>
+<th>Purpose</th>
+</tr>
+<tr>
+<td>GSC impressions</td>
+<td>Measures search visibility volume</td>
+</tr>
+<tr>
+<td>GSC clicks</td>
+<td>Measures search-result clicks</td>
+</tr>
+<tr>
+<td>GSC average position</td>
+<td>Measures observed search position</td>
+</tr>
+<tr>
+<td>CTR</td>
+<td>Calculated as clicks divided by impressions</td>
+</tr>
+</table>
+<h3>Target Label</h3>
+<p>
+The target is <code>decline_label</code>, a binary indicator representing the previously defined observed content-traffic decline condition.
+</p>
+<h3>Model</h3>
+<p>
+A logistic regression classifier was selected because it is simple, transparent, and reproducible. Features were standardized using a scaler fitted only on the training data.
+</p>
+<h3>Validation</h3>
+<p>
+The dataset was divided into an 80% training set and a 20% test set using stratification and a fixed random seed of 42. Both the majority-class baseline and logistic regression model were evaluated on the same held-out test set.
+</p>
+<h3>Baseline</h3>
+<p>
+The baseline uses a majority-class classifier. This provides a simple reference point for evaluating whether the predictive model adds measurable classification value.
+</p>
+<h3>Leakage Checks</h3>
+<ul>
+<li>The target label is excluded from the feature matrix.</li>
+<li>The target is not used during feature scaling.</li>
+<li>Scaling is fitted only on training data.</li>
+<li>The baseline and model use the same test set.</li>
+<li>No future search-performance information is intentionally introduced into the feature matrix.</li>
+</ul>
+</section>
+<section>
+<h2>4. Results</h2>
+<p>
+The model was evaluated against the majority-class baseline using the same held-out test set.
+</p>
+<table>
+<tr>
+<th>Method</th>
+<th>Accuracy</th>
+<th>Interpretation</th>
+</tr>
+<tr>
+<td>Majority Baseline</td>
+<td><strong>59.28%</strong></td>
+<td>Reference performance</td>
+</tr>
+<tr>
+<td>Logistic Regression</td>
+<td><strong>59.28%</strong></td>
+<td>No accuracy improvement over baseline</td>
+</tr>
+</table>
+<div class="note">
+<strong>Key finding:</strong> The logistic regression model achieved the same accuracy as the majority-class baseline in this validation setup. Therefore, this experiment does not provide evidence that the selected classifier improves classification accuracy beyond the simple baseline.
+</div>
+<h3>Additional Metrics</h3>
+<table>
+<tr>
+<th>Metric</th>
+<th>Logistic Regression</th>
+</tr>
+<tr>
+<td>Precision</td>
+<td>59.28%</td>
+</tr>
+<tr>
+<td>Recall</td>
+<td>100.00%</td>
+</tr>
+<tr>
+<td>F1 Score</td>
+<td>74.44%</td>
+</tr>
+</table>
+<h3>Model vs Baseline</h3>
+<p>
+The following chart was generated directly from the capstone notebook:
+</p>
+<img src="model_vs_baseline.png" alt="Model vs Baseline Chart">
+</section>
+<section>
+<h2>5. Limitations & Honest Framing</h2>
+<ul>
+<li>
+<strong>Association, not causation:</strong>
+The analysis identifies relationships in observed search-performance data. It does not establish causal mechanisms.
+</li>
+<li>
+<strong>Limited temporal window:</strong>
+The analysis focuses on the March 2026 release and therefore does not represent all seasons or future periods.
+</li>
+<li>
+<strong>No Google algorithm claims:</strong>
+The analysis does not reverse-engineer or prove how Google's ranking systems work.
+</li>
+<li>
+<strong>Prioritization, not prediction:</strong>
+The opportunity score is a review-prioritization heuristic and does not guarantee future traffic or ranking improvements.
+</li>
+<li>
+<strong>Human review required:</strong>
+Recommendations should be investigated by content and domain experts before any editorial changes are made.
+</li>
+<li>
+<strong>Model performance:</strong>
+The logistic regression classifier did not outperform the majority baseline on accuracy in this validation setup.
+</li>
+</ul>
+</section>
+<section>
+<h2>6. Ranked Recommendations</h2>
+<p>
+The opportunity scoring engine combines observable search-performance signals into a single prioritization score.
+</p>
+<h3>Opportunity Score</h3>
+<p>
+The score uses weighted percentile ranks:
+</p>
+<table>
+<tr>
+<th>Signal</th>
+<th>Weight</th>
+</tr>
+<tr>
+<td>Visibility / impressions</td>
+<td>35%</td>
+</tr>
+<tr>
+<td>Position risk</td>
+<td>25%</td>
+</tr>
+<tr>
+<td>CTR opportunity</td>
+<td>20%</td>
+</tr>
+<tr>
+<td>Observed decline signal</td>
+<td>20%</td>
+</tr>
+</table>
+<p>
+The resulting score is scaled to a 0–100 range. Higher scores indicate greater prioritization according to the defined scoring framework.
+</p>
+<h3>Reason Codes</h3>
+<table>
+<tr>
+<th>Reason Code</th>
+<th>Recommended Action</th>
+</tr>
+<tr>
+<td><strong>HIGH_VISIBILITY_DECLINE</strong></td>
+<td>Prioritize for content refresh or rewrite investigation.</td>
+</tr>
+<tr>
+<td><strong>POSITION_RISK</strong></td>
+<td>Review content and search-position risk signals.</td>
+</tr>
+<tr>
+<td><strong>LOW_CTR_OPPORTUNITY</strong></td>
+<td>Investigate search-result presentation and metadata opportunities.</td>
+</tr>
+<tr>
+<td><strong>MONITOR</strong></td>
+<td>Continue monitoring rather than immediately changing the content.</td>
+</tr>
+</table>
+<div class="note">
+<strong>Important:</strong> These reason codes are operational recommendations generated from the scoring framework. They are not guarantees of future performance.
+</div>
+</section>
+<section>
+<h2>7. Reproducibility</h2>
+<p>
+The complete analysis is contained in the capstone notebook and can be reproduced using the FlyRank ML Internship warehouse and the documented methodology.
+</p>
+<ul>
+<li>
+<a href="capstone.ipynb">
+Capstone Notebook (capstone.ipynb)
+</a>
+</li>
+<li>
+<a href="ranked_content_recommendations.csv">
+Ranked Recommendations CSV (ranked_content_recommendations.csv)
+</a>
+</li>
+<li>
+<a href="model_vs_baseline.png">
+Model vs Baseline Chart (model_vs_baseline.png)
+</a>
+</li>
+</ul>
+<p>
+The notebook uses DuckDB to query the March 2026 warehouse release and uses a fixed random seed for the validation split.
+</p>
+</section>
+<section>
+<h2>8. Acknowledgments & Data Credit</h2>
+<p>
+<strong>Built on the FlyRank ML Internship dataset.</strong>
+</p>
+<p>
+This project was completed as part of the FlyRank ML Internship capstone and uses the provided search warehouse for educational and research purposes.
+</p>
+</section>
+<footer>
+<p>
+<strong>Capstone:</strong> Refresh / Content Opportunity Scoring
+</p>
+<p>
+Search Intelligence · Decision Support · Content Prioritization
+</p>
+</footer>
+</body>
+</html>
